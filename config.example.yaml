@@ -1,0 +1,28 @@
+# config.example.yaml - Email Agent Runtime Configuration Template
+# Copy this file to config.yaml:
+#   cp config.example.yaml config.yaml
+# Then fill in your local settings and IMAP credentials.
+# NOTE: config.yaml is ignored by Git and should NEVER be committed.
+
+server:
+  host: "127.0.0.1"
+  port: 8000
+
+database:
+  path: "agent_vault.db" # Relative to backend/ or absolute path
+
+ollama:
+  base_url: "http://127.0.0.1:11434"
+  model: "gemma2:9b"
+  timeout_seconds: 120.0
+
+imap:
+  host: "imap.gmail.com"
+  port: 993
+  use_ssl: true
+  username: "your_email@gmail.com"
+  # Use an App Password (never your primary account password)
+  # For Gmail: Google Account -> Security -> 2-Step Verification -> App Passwords
+  password: "your_app_password"
+  mailbox: "INBOX"
+  poll_interval_seconds: 900 # 15 minutes
