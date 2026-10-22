@@ -112,14 +112,24 @@ async def test_get_task_detail_with_logs(temp_db):
 async def test_update_task_status(temp_db):
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        # Mark as completed
         res = await client.patch("/api/tasks/1/status", json={"status": "COMPLETED"})
         assert res.status_code == 200
-        data = res.json()
-        assert data["status"] == "COMPLETED"
+        assert res.json()["status"] == "COMPLETED"
 
-        # Check DB reflects change
+        # Dismiss task
+        res_dismiss = await client.patch("/api/tasks/1/status", json={"status": "DISMISSED"})
+        assert res_dismiss.status_code == 200
+        assert res_dismiss.json()["status"] == "DISMISSED"
+
+        # Check DB reflects dismissed status
         check_res = await client.get("/api/tasks/1")
-        assert check_res.json()["task"]["status"] == "COMPLETED"
+        assert check_res.json()["task"]["status"] == "DISMISSED"
+
+        # Restore back to PENDING
+        res_restore = await client.patch("/api/tasks/1/status", json={"status": "PENDING"})
+        assert res_restore.status_code == 200
+        assert res_restore.json()["status"] == "PENDING"
 
 
 @pytest.mark.asyncio

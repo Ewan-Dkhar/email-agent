@@ -1,7 +1,7 @@
 import React from 'react';
 import { TaskOut, TaskStatus } from '../types';
 import { PriorityBadge } from './PriorityBadge';
-import { ExternalLink, Bot, CheckCircle2, Clock } from 'lucide-react';
+import { ExternalLink, Bot, CheckCircle2, Clock, XCircle } from 'lucide-react';
 
 interface TaskCardProps {
   task: TaskOut;
@@ -24,6 +24,12 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   const toggleComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
     const nextStatus: TaskStatus = isCompleted ? 'PENDING' : 'COMPLETED';
+    onStatusChange(task.id, nextStatus);
+  };
+
+  const toggleDismiss = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const nextStatus: TaskStatus = isDismissed ? 'PENDING' : 'DISMISSED';
     onStatusChange(task.id, nextStatus);
   };
 
@@ -50,14 +56,42 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             <span style={{ fontSize: '12px', color: '#6b7280' }}>
               #{task.id}
             </span>
+            {isDismissed && (
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  color: '#dc2626',
+                  backgroundColor: '#fee2e2',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                }}
+              >
+                Dismissed
+              </span>
+            )}
+            {isCompleted && (
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  color: '#16a34a',
+                  backgroundColor: '#dcfce7',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                }}
+              >
+                Completed
+              </span>
+            )}
           </div>
           <h3
             style={{
               margin: '4px 0 0 0',
               fontSize: '16px',
               fontWeight: '600',
-              color: '#111827',
-              textDecoration: isCompleted ? 'line-through' : 'none',
+              color: isDismissed ? '#9ca3af' : '#111827',
+              textDecoration: isCompleted || isDismissed ? 'line-through' : 'none',
             }}
           >
             {task.title}
@@ -161,6 +195,29 @@ export const TaskCard: React.FC<TaskCardProps> = ({
         </div>
 
         <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={toggleDismiss}
+            title={isDismissed ? 'Restore task to pending' : 'Dismiss this task'}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '6px 12px',
+              fontSize: '13px',
+              fontWeight: '500',
+              borderRadius: '6px',
+              border: '1px solid',
+              borderColor: isDismissed ? '#fca5a5' : '#d1d5db',
+              backgroundColor: isDismissed ? '#fef2f2' : '#ffffff',
+              color: isDismissed ? '#dc2626' : '#6b7280',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <XCircle size={14} />
+            {isDismissed ? 'Dismissed' : 'Dismiss'}
+          </button>
+
           <button
             onClick={toggleComplete}
             style={{

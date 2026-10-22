@@ -290,6 +290,7 @@ export const App: React.FC = () => {
           task={selectedTask}
           onClose={() => setSelectedTask(null)}
           onTaskUpdated={loadTasks}
+          onStatusChange={handleStatusChange}
         />
       )}
     </div>

@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TaskOut, ExecutionLogOut, AgentActionLog, DraftRecord } from '../types';
+import { TaskOut, TaskStatus, ExecutionLogOut, AgentActionLog, DraftRecord } from '../types';
 import { getTaskDetail, runTaskCopilot, getDraft, approveDraft } from '../api';
 import { PriorityBadge } from './PriorityBadge';
-import { X, Send, Bot, CheckCircle, AlertTriangle, Mail, User, RotateCcw } from 'lucide-react';
+import { X, Send, Bot, CheckCircle, AlertTriangle, Mail, User, RotateCcw, XCircle, CheckCircle2 } from 'lucide-react';
 
 interface AgentDrawerProps {
   task: TaskOut;
   onClose: () => void;
   onTaskUpdated?: () => void;
+  onStatusChange?: (taskId: number, newStatus: TaskStatus) => void;
 }
 
 export interface ConversationTurn {
@@ -46,7 +47,7 @@ function saveTaskSession(taskId: number, state: TaskSessionState) {
   }
 }
 
-export const AgentDrawer: React.FC<AgentDrawerProps> = ({ task, onClose, onTaskUpdated }) => {
+export const AgentDrawer: React.FC<AgentDrawerProps> = ({ task, onClose, onTaskUpdated, onStatusChange }) => {
   const [instruction, setInstruction] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +57,21 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({ task, onClose, onTaskU
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
   const [stagedDraft, setStagedDraft] = useState<DraftRecord | null>(null);
   const [draftApproved, setDraftApproved] = useState(false);
+
+  const isCompleted = task.status === 'COMPLETED';
+  const isDismissed = task.status === 'DISMISSED';
+
+  const handleToggleDismiss = () => {
+    if (onStatusChange) {
+      onStatusChange(task.id, isDismissed ? 'PENDING' : 'DISMISSED');
+    }
+  };
+
+  const handleToggleComplete = () => {
+    if (onStatusChange) {
+      onStatusChange(task.id, isCompleted ? 'PENDING' : 'COMPLETED');
+    }
+  };
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -304,11 +320,72 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({ task, onClose, onTaskU
 
         {/* Task Summary Banner */}
         <div style={{ padding: '14px 20px', borderBottom: '1px solid #f3f4f6', backgroundColor: '#ffffff' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-            <PriorityBadge priority={task.priority_tier} />
-            <span style={{ fontSize: '14px', fontWeight: '600', color: '#111827' }}>
-              {task.title}
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <PriorityBadge priority={task.priority_tier} />
+              <span style={{ fontSize: '14px', fontWeight: '600', color: isDismissed ? '#9ca3af' : '#111827', textDecoration: isCompleted || isDismissed ? 'line-through' : 'none' }}>
+                {task.title}
+              </span>
+              {isDismissed && (
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#dc2626', backgroundColor: '#fee2e2', padding: '2px 8px', borderRadius: '12px' }}>
+                  Dismissed
+                </span>
+              )}
+              {isCompleted && (
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#16a34a', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '12px' }}>
+                  Completed
+                </span>
+              )}
+            </div>
+
+            {onStatusChange && (
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  onClick={handleToggleDismiss}
+                  title={isDismissed ? 'Restore task to pending' : 'Dismiss this task'}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '4px 10px',
+                    fontSize: '12px',
+                    fontWeight: '500',
+                    borderRadius: '6px',
+                    border: '1px solid',
+                    borderColor: isDismissed ? '#fca5a5' : '#d1d5db',
+                    backgroundColor: isDismissed ? '#fef2f2' : '#ffffff',
+                    color: isDismissed ? '#dc2626' : '#6b7280',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <XCircle size={13} />
+                  {isDismissed ? 'Dismissed' : 'Dismiss'}
+                </button>
+
+                <button
+                  onClick={handleToggleComplete}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '4px 10px',
+                    fontSize: '12px',
+                    fontWeight: '500',
+                    borderRadius: '6px',
+                    border: '1px solid',
+                    borderColor: isCompleted ? '#86efac' : '#d1d5db',
+                    backgroundColor: isCompleted ? '#f0fdf4' : '#ffffff',
+                    color: isCompleted ? '#16a34a' : '#374151',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <CheckCircle2 size={13} />
+                  {isCompleted ? 'Done' : 'Mark Done'}
+                </button>
+              </div>
+            )}
           </div>
           <p style={{ margin: 0, fontSize: '13px', color: '#4b5563', lineHeight: '1.4' }}>
             {task.summary}
