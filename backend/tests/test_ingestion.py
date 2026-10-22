@@ -138,6 +138,37 @@ def test_imap_uid_deduplication(temp_db):
             assert cursor.fetchone() is not None
 
 
+def test_imap_high_water_mark_cursor_range(temp_db):
+    """Verifies that ImapSyncClient queries UID range UID {max_uid + 1}:* instead of scanning ALL."""
+    with get_db(temp_db) as conn:
+        conn.execute(
+            """
+            INSERT INTO processed_emails (imap_uid, sender, subject, received_at, raw_snippet)
+            VALUES ('500', 'boss@work.com', 'Meeting', '2026-10-21', 'Snippet')
+            """
+        )
+
+    msg = EmailMessage()
+    msg["From"] = "boss@work.com"
+    msg["Subject"] = "Followup"
+    msg["Date"] = "2026-10-22"
+    msg.set_content("Let's meet tomorrow.")
+    raw_501 = msg.as_bytes()
+
+    client = ImapSyncClient()
+    mock_imap = MagicMock()
+    mock_imap.uid.side_effect = [
+        ("OK", [b"500 501"]),
+        ("OK", [(b"1 (RFC822 {50}", raw_501)]),
+    ]
+
+    with patch("imaplib.IMAP4_SSL", return_value=mock_imap):
+        new_emails = client.fetch_unprocessed_emails(db_path=temp_db)
+        mock_imap.uid.assert_any_call("search", None, "UID 501:*")
+        assert len(new_emails) == 1
+        assert new_emails[0].imap_uid == "501"
+
+
 def test_indirect_prompt_injection_sanitization():
     from app.ingestion.sanitizer import sanitize_text_security, wrap_untrusted_content
 

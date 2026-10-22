@@ -151,3 +151,19 @@ async def test_triage_service_end_to_end_persistence(temp_db):
         assert task_row["deadline"] == "2026-10-23 17:00"
         assert task_row["status"] == "PENDING"
         assert task_row["action_url"] == "https://portal.university.edu/grad"
+
+    # 5. Call triage_and_persist a second time to verify idempotency guard
+    mock_ollama_client.triage_email.reset_mock()
+    repeat_result = await service.triage_and_persist(email_data, db_path=temp_db)
+
+    # Verify Ollama was NOT called again
+    mock_ollama_client.triage_email.assert_not_called()
+    assert repeat_result.is_actionable is False
+    assert len(repeat_result.tasks) == 0
+
+    # Verify task count in database remains exactly 1 (no duplicate rows)
+    with get_db(temp_db) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM tasks WHERE email_uid = '5005'")
+        assert cursor.fetchone()[0] == 1
+

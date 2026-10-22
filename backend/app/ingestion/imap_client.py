@@ -19,27 +19,30 @@ class ImapSyncClient:
     def __init__(self, config: Optional[ImapConfig] = None):
         self.config = config or get_settings().imap
 
-    def _get_processed_uids(self, db_path: Optional[Path] = None) -> Set[str]:
-        """Queries SQLite for previously ingested IMAP UIDs."""
+    def _get_max_processed_uid(self, db_path: Optional[Path] = None) -> Optional[int]:
+        """Queries SQLite for the highest numerical IMAP UID processed so far."""
         with get_db(db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT imap_uid FROM processed_emails")
-            return {row["imap_uid"] for row in cursor.fetchall()}
+            cursor.execute("SELECT MAX(CAST(imap_uid AS INTEGER)) AS max_uid FROM processed_emails")
+            row = cursor.fetchone()
+            if row and row["max_uid"] is not None:
+                return int(row["max_uid"])
+            return None
 
     def _save_processed_email(self, email_data: SanitizedEmail, db_path: Optional[Path] = None) -> None:
-        """Persists email metadata into processed_emails table."""
+        """Persists email metadata into processed_emails table with initial is_triaged = 0."""
         with get_db(db_path) as conn:
             conn.execute(
                 """
-                INSERT OR IGNORE INTO processed_emails (imap_uid, sender, subject, received_at, raw_snippet)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT OR IGNORE INTO processed_emails (imap_uid, sender, subject, received_at, raw_snippet, is_triaged)
+                VALUES (?, ?, ?, ?, ?, 0)
                 """,
                 (
                     email_data.imap_uid,
                     email_data.sender,
                     email_data.subject,
                     email_data.received_at,
-                    email_data.raw_snippet
+                    email_data.raw_snippet,
                 )
             )
 
@@ -50,15 +53,15 @@ class ImapSyncClient:
         db_path: Optional[Path] = None
     ) -> List[SanitizedEmail]:
         """
-        Connects to IMAP server, identifies new UIDs not in SQLite,
-        fetches raw payloads, sanitizes them, and persists records.
+        Connects to IMAP server, queries new UIDs using High-Water Mark cursor tracking,
+        fetches raw payloads, sanitizes them, and persists records into processed_emails.
         """
         if not self.config.username or not self.config.password:
             logger.warning("IMAP credentials not configured. Skipping remote fetch.")
             return []
 
         target_mailbox = mailbox or self.config.mailbox
-        processed_uids = self._get_processed_uids(db_path)
+        max_uid = self._get_max_processed_uid(db_path)
         new_emails: List[SanitizedEmail] = []
 
         try:
@@ -70,17 +73,34 @@ class ImapSyncClient:
             mail.login(self.config.username, self.config.password)
             mail.select(target_mailbox, readonly=True)
 
-            # Search for all message UIDs in the mailbox
-            status, search_data = mail.uid("search", None, "ALL")
+            if max_uid is not None:
+                # High-Water Mark cursor search: only query messages with UID > max_uid
+                search_criteria = f"UID {max_uid + 1}:*"
+            else:
+                # Bootstrap mode for fresh mailbox: query all
+                search_criteria = "ALL"
+
+            status, search_data = mail.uid("search", None, search_criteria)
             if status != "OK" or not search_data or not search_data[0]:
                 mail.logout()
                 return []
 
             server_uids = [uid.decode("utf-8") for uid in search_data[0].split()]
-            unprocessed_uids = [uid for uid in server_uids if uid not in processed_uids]
 
-            # Ingest most recent first, capped at max_emails per poll
-            unprocessed_uids = unprocessed_uids[-max_emails:]
+            # IMAP RFC 3501 boundary protection:
+            # If search is 'UID X:*' and no UID >= X exists, some servers return the highest existing UID.
+            # Strictly filter for UIDs greater than max_uid:
+            if max_uid is not None:
+                unprocessed_uids = [
+                    uid for uid in server_uids
+                    if uid.isdigit() and int(uid) > max_uid
+                ]
+            else:
+                # On initial bootstrap, ingest most recent first capped at max_emails
+                unprocessed_uids = server_uids[-max_emails:]
+
+            # Cap batch size to avoid unbounded memory / network stalls
+            unprocessed_uids = unprocessed_uids[:max_emails]
 
             for uid in unprocessed_uids:
                 status, fetch_data = mail.uid("fetch", uid, "(RFC822)")

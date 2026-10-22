@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS processed_emails (
     subject TEXT NOT NULL,
     received_at TEXT NOT NULL,
     raw_snippet TEXT,
-    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_triaged INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
