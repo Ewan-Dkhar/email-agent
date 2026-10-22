@@ -174,3 +174,61 @@ async def test_draft_inspection_and_approval_gate():
         # 3. Verify status updated in store
         updated = await client.get(f"/api/drafts/{draft_id}")
         assert updated.json()["status"] == "APPROVED"
+
+
+@pytest.mark.asyncio
+async def test_tasks_ordering_p1_deadlines_and_email_recency(temp_db):
+    """
+    Verifies that tasks are ordered:
+    1. P1_CRITICAL tasks with earliest deadline first.
+    2. Non-P1 tasks sorted with most recent email date first.
+    """
+    with get_db(temp_db) as conn:
+        conn.execute("DELETE FROM execution_logs")
+        conn.execute("DELETE FROM tasks")
+        conn.execute("DELETE FROM processed_emails")
+
+        # Insert emails with different dates
+        conn.execute(
+            """
+            INSERT INTO processed_emails (imap_uid, sender, subject, received_at)
+            VALUES 
+                ('A', 'a@test.com', 'Old email', '2026-10-10 10:00:00'),
+                ('B', 'b@test.com', 'New email', '2026-10-20 10:00:00'),
+                ('C', 'c@test.com', 'P1 later email', '2026-10-05 10:00:00'),
+                ('D', 'd@test.com', 'P1 earlier email', '2026-10-01 10:00:00'),
+                ('E', 'e@test.com', 'P1 expired email', '2026-09-01 10:00:00')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO tasks (id, email_uid, title, priority_tier, deadline, summary, status)
+            VALUES 
+                (10, 'A', 'P2 Older Email Task', 'P2_ACTIONABLE', NULL, 'Summary A', 'PENDING'),
+                (20, 'B', 'P2 Newer Email Task', 'P2_ACTIONABLE', NULL, 'Summary B', 'PENDING'),
+                (30, 'C', 'P1 Later Deadline Task', 'P1_CRITICAL', '2026-10-28 12:00:00', 'Summary C', 'PENDING'),
+                (40, 'D', 'P1 Earlier Deadline Task', 'P1_CRITICAL', '2026-10-24 12:00:00', 'Summary D', 'PENDING'),
+                (50, 'E', 'P1 Expired Deadline Task', 'P1_CRITICAL', '2026-09-05 12:00:00', 'Summary E', 'PENDING')
+            """
+        )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/api/tasks")
+        assert res.status_code == 200
+        tasks = res.json()
+        
+        # Expected order:
+        # 1. P1 Earlier Deadline Task (upcoming Oct 24)
+        # 2. P1 Later Deadline Task (upcoming Oct 28)
+        # 3. P2 Newer Email Task (Oct 20)
+        # 4. P2 Older Email Task (Oct 10)
+        # 5. P1 Expired Deadline Task (Sept 05 deadline has passed -> sunk to bottom)
+        titles = [t["title"] for t in tasks]
+        assert titles[0] == "P1 Earlier Deadline Task"
+        assert titles[1] == "P1 Later Deadline Task"
+        assert titles[2] == "P2 Newer Email Task"
+        assert titles[3] == "P2 Older Email Task"
+        assert titles[4] == "P1 Expired Deadline Task"
+
+

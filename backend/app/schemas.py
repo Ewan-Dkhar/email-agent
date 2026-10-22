@@ -58,6 +58,7 @@ class TaskOut(BaseModel):
     sender: str
     subject: str
     created_at: str
+    received_at: Optional[str] = None
 
 
 class StatusUpdateRequest(BaseModel):

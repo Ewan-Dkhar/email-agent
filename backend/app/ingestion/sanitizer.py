@@ -174,6 +174,26 @@ def extract_body_from_mime(msg: EmailMessage) -> Tuple[str, bool]:
     return "", False
 
 
+def normalize_email_date(date_header: str) -> str:
+    """
+    Standardizes raw MIME Date headers into ISO 8601 UTC format (YYYY-MM-DD HH:MM:SS)
+    to enable proper chronological SQL sorting.
+    """
+    if not date_header:
+        return ""
+    try:
+        from email.utils import parsedate_to_datetime
+        from datetime import timezone
+        dt = parsedate_to_datetime(date_header)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return date_header
+
+
 def parse_raw_email(raw_bytes: bytes, imap_uid: str) -> SanitizedEmail:
     """
     Parses raw RFC 5322 bytes into a validated SanitizedEmail instance.
@@ -197,7 +217,7 @@ def parse_raw_email(raw_bytes: bytes, imap_uid: str) -> SanitizedEmail:
         imap_uid=imap_uid,
         sender=sender,
         subject=subject,
-        received_at=date_header,
+        received_at=normalize_email_date(date_header),
         cleaned_body=cleaned_body,
         raw_snippet=snippet,
     )

@@ -114,7 +114,7 @@ async def list_tasks(
         SELECT 
             t.id, t.email_uid, t.title, t.deadline, t.priority_tier, 
             t.summary, t.action_url, t.status, t.created_at,
-            e.sender, e.subject
+            e.sender, e.subject, e.received_at
         FROM tasks t
         JOIN processed_emails e ON t.email_uid = e.imap_uid
         WHERE 1=1
@@ -130,8 +130,30 @@ async def list_tasks(
 
     query += """
         ORDER BY 
-            CASE WHEN t.deadline IS NULL THEN 1 ELSE 0 END, 
-            t.deadline ASC, 
+            -- 1. Active unexpired tasks first; passed deadlines and completed tasks sink to bottom
+            CASE 
+                WHEN t.status IN ('COMPLETED', 'DISMISSED') THEN 2
+                WHEN t.deadline IS NOT NULL AND REPLACE(t.deadline, 'T', ' ') < datetime('now') THEN 1
+                ELSE 0
+            END ASC,
+            -- 2. Within active tasks: P1_CRITICAL with upcoming deadlines prioritized at top (earliest deadline first)
+            CASE 
+                WHEN t.priority_tier = 'P1_CRITICAL' AND t.deadline IS NOT NULL THEN 0 
+                ELSE 1 
+            END ASC,
+            CASE 
+                WHEN t.priority_tier = 'P1_CRITICAL' AND t.deadline IS NOT NULL THEN t.deadline 
+                ELSE NULL 
+            END ASC,
+            -- 3. Recent emails at the top (later dates first, earlier dates last)
+            e.received_at DESC,
+            -- 4. Within same email date: prioritize P1 over P2 over P3
+            CASE 
+                WHEN t.priority_tier = 'P1_CRITICAL' THEN 0 
+                WHEN t.priority_tier = 'P2_ACTIONABLE' THEN 1 
+                ELSE 2 
+            END ASC,
+            -- 5. Stable tie-breaker
             t.id DESC
     """
 
@@ -152,7 +174,7 @@ async def get_task_detail(task_id: int):
             SELECT 
                 t.id, t.email_uid, t.title, t.deadline, t.priority_tier, 
                 t.summary, t.action_url, t.status, t.created_at,
-                e.sender, e.subject
+                e.sender, e.subject, e.received_at
             FROM tasks t
             JOIN processed_emails e ON t.email_uid = e.imap_uid
             WHERE t.id = ?

@@ -27,6 +27,7 @@ export interface TaskOut {
   sender: string;
   subject: string;
   created_at: string;
+  received_at?: string | null;
 }
 
 export interface ExecutionLogOut {

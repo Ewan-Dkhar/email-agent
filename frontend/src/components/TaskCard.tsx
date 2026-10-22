@@ -17,6 +17,10 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   const isCompleted = task.status === 'COMPLETED';
   const isDismissed = task.status === 'DISMISSED';
 
+  const isDeadlinePassed = task.deadline
+    ? new Date(task.deadline.replace(' ', 'T')).getTime() < Date.now()
+    : false;
+
   const toggleComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
     const nextStatus: TaskStatus = isCompleted ? 'PENDING' : 'COMPLETED';
@@ -68,15 +72,24 @@ export const TaskCard: React.FC<TaskCardProps> = ({
               gap: '4px',
               fontSize: '12px',
               fontWeight: '500',
-              color: task.priority_tier === 'P1_CRITICAL' ? '#b91c1c' : '#4b5563',
-              backgroundColor: task.priority_tier === 'P1_CRITICAL' ? '#fef2f2' : '#f3f4f6',
+              color: isDeadlinePassed
+                ? '#6b7280'
+                : task.priority_tier === 'P1_CRITICAL'
+                ? '#b91c1c'
+                : '#1d4ed8',
+              backgroundColor: isDeadlinePassed
+                ? '#f3f4f6'
+                : task.priority_tier === 'P1_CRITICAL'
+                ? '#fef2f2'
+                : '#eff6ff',
               padding: '4px 8px',
               borderRadius: '6px',
               whiteSpace: 'nowrap',
+              textDecoration: isDeadlinePassed ? 'line-through' : 'none',
             }}
           >
             <Clock size={14} />
-            <span>{task.deadline}</span>
+            <span>{task.deadline} {isDeadlinePassed ? '(Passed)' : ''}</span>
           </div>
         )}
       </div>
@@ -96,14 +109,22 @@ export const TaskCard: React.FC<TaskCardProps> = ({
           borderRadius: '4px',
           display: 'flex',
           justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '8px',
+          flexWrap: 'wrap',
         }}
       >
-        <span>
+        <span style={{ maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           <strong>From:</strong> {task.sender}
         </span>
-        <span style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {task.subject}
+        <span style={{ maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <strong>Subject:</strong> {task.subject}
         </span>
+        {task.received_at && (
+          <span style={{ fontSize: '11px', color: '#6b7280', marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+            📅 {task.received_at}
+          </span>
+        )}
       </div>
 
       {/* Card Actions Footer */}
