@@ -109,3 +109,49 @@ class OllamaClient:
         except Exception as e:
             logger.error(f"Ollama inference error: {str(e)}")
             raise OllamaClientError(f"Triage inference failed: {str(e)}") from e
+
+    async def chat_completion(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        temperature: float = 0.2
+    ) -> Dict[str, Any]:
+        """
+        Executes a multi-turn chat completion turn with optional tool definitions.
+        Used by the interactive ReAct Co-Pilot harness.
+        """
+        url = f"{self.base_url}/api/chat"
+        payload: Dict[str, Any] = {
+            "model": self.config.model,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+            }
+        }
+        if tools:
+            payload["tools"] = tools
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, json=payload)
+                
+                if response.status_code == 404:
+                    raise OllamaModelNotFoundError(
+                        f"Model '{self.config.model}' not found in Ollama. Run: ollama pull {self.config.model}"
+                    )
+                
+                response.raise_for_status()
+                data = response.json()
+                return data.get("message", {})
+
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            raise OllamaConnectionError(
+                f"Failed to reach Ollama at {self.base_url}. Is the service running?"
+            ) from e
+        except OllamaClientError:
+            raise
+        except Exception as e:
+            logger.error(f"Ollama chat completion error: {str(e)}")
+            raise OllamaClientError(f"Chat completion failed: {str(e)}") from e
+

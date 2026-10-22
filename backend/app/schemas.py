@@ -22,16 +22,17 @@ class TaskStatus(str, Enum):
 
 
 class ExtractedTask(BaseModel):
-    title: str = Field(..., description="Action verb + object, e.g. 'Submit Elective Choice Form'")
-    priority: PriorityTier = Field(..., description="Calculated urgency tier")
+    title: str = Field(description="Action verb + object, e.g. 'Submit Elective Choice Form'")
+    priority: PriorityTier = Field(description="Calculated urgency tier")
     deadline: Optional[str] = Field(None, description="Calculated ISO 8601 timestamp (YYYY-MM-DD HH:MM) or null")
-    summary: str = Field(..., description="1-2 sentences on what must be done and why")
+    summary: str = Field(description="1-2 sentences on what must be done and why")
     action_url: Optional[str] = Field(None, description="Direct URL to portal, form, or document if found")
 
 
 class EmailTriageResult(BaseModel):
-    is_actionable: bool = Field(..., description="True if this email requires user action or response")
+    is_actionable: bool = Field(description="True if this email requires user action or response")
     tasks: List[ExtractedTask] = Field(default_factory=list, description="Extracted actionable tasks")
+
 
 
 class SanitizedEmail(BaseModel):
@@ -60,4 +61,5 @@ class TaskOut(BaseModel):
 
 
 class StatusUpdateRequest(BaseModel):
-    status: TaskStatus = Field(..., description="Target lifecycle state for the task")
+    status: TaskStatus = Field(description="Target lifecycle state for the task")
+
