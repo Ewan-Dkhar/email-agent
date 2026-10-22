@@ -285,11 +285,13 @@ export const App: React.FC = () => {
       </main>
 
       {/* Interactive ReAct Agent Drawer */}
-      <AgentDrawer
-        task={selectedTask}
-        onClose={() => setSelectedTask(null)}
-        onTaskUpdated={loadTasks}
-      />
+      {selectedTask && (
+        <AgentDrawer
+          task={selectedTask}
+          onClose={() => setSelectedTask(null)}
+          onTaskUpdated={loadTasks}
+        />
+      )}
     </div>
   );
 };
