@@ -10,6 +10,7 @@ import pytest
 from app.database import get_db, init_db
 from app.harness.agent_loop import ReActAgentHarness
 from app.harness.ollama_client import OllamaClient
+from app.schemas import CoPilotResponse, ToolCallAction
 from app.tools.base import BaseSkill, SkillResult
 from app.tools.registry import SkillRegistry
 from pydantic import BaseModel, Field
@@ -57,28 +58,19 @@ async def test_react_loop_multi_turn_success(temp_db):
     registry.register(MockLookupSkill)
 
     # Turn 1: Model requests tool call
-    turn_1_response = {
-        "role": "assistant",
-        "content": "Let me look up your student record.",
-        "tool_calls": [
-            {
-                "function": {
-                    "name": "lookup_info",
-                    "arguments": {"item": "Student_ID"}
-                }
-            }
-        ]
-    }
+    turn_1_response = CoPilotResponse(
+        thought="Let me look up your student record.",
+        action=ToolCallAction(name="lookup_info", arguments={"item": "Student_ID"})
+    )
 
     # Turn 2: Model returns final answer after receiving tool observation
-    turn_2_response = {
-        "role": "assistant",
-        "content": "I found your record: Record for Student_ID. You are all set!",
-        "tool_calls": None
-    }
+    turn_2_response = CoPilotResponse(
+        thought="I found your record.",
+        final_answer="I found your record: Record for Student_ID. You are all set!"
+    )
 
     mock_ollama = MagicMock(spec=OllamaClient)
-    mock_ollama.chat_completion = AsyncMock(side_effect=[turn_1_response, turn_2_response])
+    mock_ollama.step_copilot = AsyncMock(side_effect=[turn_1_response, turn_2_response])
 
     harness = ReActAgentHarness(ollama_client=mock_ollama, skill_registry=registry)
     result = await harness.execute_task(
@@ -111,21 +103,13 @@ async def test_react_loop_max_iterations_circuit_breaker(temp_db):
     registry.register(MockLookupSkill)
 
     # Model endlessly loops requesting tool calls
-    infinite_tool_response = {
-        "role": "assistant",
-        "content": "Checking again...",
-        "tool_calls": [
-            {
-                "function": {
-                    "name": "lookup_info",
-                    "arguments": {"item": "loop"}
-                }
-            }
-        ]
-    }
+    infinite_tool_response = CoPilotResponse(
+        thought="Checking again...",
+        action=ToolCallAction(name="lookup_info", arguments={"item": "loop"})
+    )
 
     mock_ollama = MagicMock(spec=OllamaClient)
-    mock_ollama.chat_completion = AsyncMock(return_value=infinite_tool_response)
+    mock_ollama.step_copilot = AsyncMock(return_value=infinite_tool_response)
 
     harness = ReActAgentHarness(ollama_client=mock_ollama, skill_registry=registry)
     result = await harness.execute_task(

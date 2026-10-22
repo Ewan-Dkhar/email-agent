@@ -1,6 +1,7 @@
 """
 ReAct Agent Harness and Interactive Co-Pilot Loop.
-Orchestrates multi-turn reasoning, tool execution, and SQLite audit logging.
+Orchestrates multi-turn reasoning, grammar-constrained tool execution, and SQLite audit logging.
+Compatible across all local models (including Gemma-2-9B) using Context-Free Grammar logit masking.
 """
 
 import json
@@ -10,24 +11,36 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 from app.database import get_db
 from app.harness.ollama_client import OllamaClient
-from app.tools.registry import SkillRegistry, registry as default_registry
+from app.schemas import CoPilotResponse
+from app.tools import SkillRegistry, registry as default_registry
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_CO_PILOT_PROMPT = """You are an autonomous interactive co-pilot assisting the user with completing an academic or administrative task.
-You have access to tools that allow you to read local workspace documents and draft context-aware email replies.
 
-=== OPERATIONAL WORKFLOW (ReAct) ===
-1. Reason: Consider what information is needed to fulfill the user's instruction.
-2. Act: Call a relevant tool to inspect files or draft replies if needed.
-3. Observe: Review the tool output and decide if further actions are required.
-4. Finish: Once all necessary actions are taken, provide a clear, helpful final answer to the user.
+def build_copilot_system_prompt(tools: List[Dict[str, Any]]) -> str:
+    """Builds a grounded system prompt containing tool descriptions and ReAct guidelines."""
+    tools_desc = []
+    for t in tools:
+        fn = t.get("function", {})
+        name = fn.get("name", "")
+        desc = fn.get("description", "")
+        params = fn.get("parameters", {}).get("properties", {})
+        param_list = ", ".join(f"{p}: {info.get('type', 'any')}" for p, info in params.items())
+        tools_desc.append(f"- {name}({param_list}): {desc}")
 
-=== SAFETY & HUMAN-IN-THE-LOOP INVARIANTS ===
-- When reading local files, only request files within the designated workspace.
-- When drafting an email reply, use the draft_email_reply tool. It will stage the email for human approval. You NEVER send emails directly.
-- Be concise, direct, and professional.
-"""
+    tools_block = "\n".join(tools_desc) if tools_desc else "No external tools available."
+
+    return (
+        "You are an autonomous interactive co-pilot assisting the user with completing an academic or administrative task.\n"
+        "You reason step-by-step and can call local tools.\n\n"
+        "=== AVAILABLE TOOLS ===\n"
+        f"{tools_block}\n\n"
+        "=== WORKFLOW INSTRUCTIONS ===\n"
+        "1. Reason: State your step-by-step reasoning in the 'thought' field.\n"
+        "2. Action: If you need to inspect files or draft replies, specify 'action' with the tool 'name' and 'arguments'. Leave 'final_answer' as null.\n"
+        "3. Final Answer: If no tool is needed or you have sufficient information to answer the user, set 'action' to null and provide your complete response in 'final_answer'.\n"
+        "4. Safety: When drafting an email reply, use 'draft_email_reply'. It stages the email locally for human approval. You NEVER send emails directly.\n"
+    )
 
 
 class AgentLoopResult(BaseModel):
@@ -82,9 +95,12 @@ class ReActAgentHarness:
         max_iterations: int = 6
     ) -> AgentLoopResult:
         """
-        Executes the ReAct co-pilot loop until the model outputs a final answer
-        or reaches max_iterations.
+        Executes the ReAct co-pilot loop using grammar-constrained turn decoding
+        until the model outputs a final answer or reaches max_iterations.
         """
+        tools = self.registry.get_tool_definitions()
+        system_prompt = build_copilot_system_prompt(tools)
+
         user_prompt = (
             f"Active Task: {task_title}\n"
             f"Task Summary: {task_summary}\n\n"
@@ -92,86 +108,77 @@ class ReActAgentHarness:
         )
 
         messages: List[Dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_CO_PILOT_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ]
 
         actions_taken: List[Dict[str, Any]] = []
-        tools = self.registry.get_tool_definitions()
 
         for iteration in range(1, max_iterations + 1):
             logger.info(f"Task {task_id} - ReAct iteration {iteration}/{max_iterations}")
 
-            # 1. Inference call to local model
-            assistant_message = await self.ollama.chat_completion(
+            # 1. Grammar-constrained inference call to local model
+            step_result: CoPilotResponse = await self.ollama.step_copilot(
                 messages=messages,
-                tools=tools if tools else None,
-                temperature=0.2
+                temperature=0.1
             )
 
-            thought = assistant_message.get("content") or ""
-            tool_calls = assistant_message.get("tool_calls")
+            thought = step_result.thought or ""
+            action = step_result.action
+            final_answer = step_result.final_answer
 
             # 2. Check if model requested tool execution
-            if tool_calls:
-                # Append assistant message with tool calls to context history
-                messages.append(assistant_message)
+            if action and action.name:
+                tool_name = action.name
+                tool_args = action.arguments or {}
 
-                for call in tool_calls:
-                    function_data = call.get("function", {})
-                    tool_name = function_data.get("name", "")
-                    raw_args = function_data.get("arguments", {})
+                # 3. Dispatch to skill registry
+                skill_result = await self.registry.dispatch(tool_name, tool_args)
+                result_dict = skill_result.model_dump()
 
-                    if isinstance(raw_args, str):
-                        try:
-                            tool_args = json.loads(raw_args)
-                        except json.JSONDecodeError:
-                            tool_args = {"raw": raw_args}
-                    else:
-                        tool_args = raw_args or {}
+                # 4. Log to SQLite execution audit trail
+                self._log_execution_step(
+                    task_id=task_id,
+                    thought=thought,
+                    tool_name=tool_name,
+                    tool_input=tool_args,
+                    tool_output=result_dict,
+                    db_path=db_path
+                )
 
-                    # 3. Dispatch to skill registry
-                    skill_result = await self.registry.dispatch(tool_name, tool_args)
-                    result_dict = skill_result.model_dump()
+                actions_taken.append({
+                    "iteration": iteration,
+                    "thought": thought,
+                    "tool_name": tool_name,
+                    "input": tool_args,
+                    "output": result_dict
+                })
 
-                    # 4. Log to SQLite execution audit trail
-                    self._log_execution_step(
-                        task_id=task_id,
-                        thought=thought,
-                        tool_name=tool_name,
-                        tool_input=tool_args,
-                        tool_output=result_dict,
-                        db_path=db_path
-                    )
-
-                    actions_taken.append({
-                        "iteration": iteration,
-                        "thought": thought,
-                        "tool_name": tool_name,
-                        "input": tool_args,
-                        "output": result_dict
-                    })
-
-                    # 5. Feed tool observation back to context buffer
-                    messages.append({
-                        "role": "tool",
-                        "content": json.dumps(result_dict)
-                    })
+                # 5. Append assistant turn and tool observation to context buffer
+                messages.append({
+                    "role": "assistant",
+                    "content": json.dumps(step_result.model_dump())
+                })
+                messages.append({
+                    "role": "user",
+                    "content": f"Observation from tool '{tool_name}': {json.dumps(result_dict)}"
+                })
             else:
-                # 6. Final answer reached (no tool calls emitted)
+                # 6. Final answer reached
+                answer = final_answer or thought
                 self._log_execution_step(
                     task_id=task_id,
                     thought=thought,
                     tool_name="final_answer",
                     tool_input={},
-                    tool_output={"response": thought},
+                    tool_output={"response": answer},
                     db_path=db_path
                 )
 
                 return AgentLoopResult(
                     task_id=task_id,
                     completed=True,
-                    final_response=thought,
+                    final_response=answer,
                     iterations=iteration,
                     actions_taken=actions_taken
                 )

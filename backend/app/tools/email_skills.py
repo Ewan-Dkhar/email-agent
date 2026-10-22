@@ -6,15 +6,22 @@ Never directly dispatches outbound emails over SMTP.
 
 from typing import Dict, Optional
 import uuid
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from app.tools.base import BaseSkill, SkillResult
 from app.tools.registry import registry
 
 
 class DraftEmailArgs(BaseModel):
-    recipient: str = Field(description="Target recipient email address")
+    recipient: str = Field(
+        description="Target recipient email address",
+        validation_alias=AliasChoices("recipient", "to", "email")
+    )
     subject: str = Field(description="Subject line for the reply (typically starting with 'Re: ')")
-    body_markdown: str = Field(description="Content of the reply in clear Markdown format")
+    body_markdown: str = Field(
+        description="Content of the reply in clear Markdown format",
+        validation_alias=AliasChoices("body_markdown", "body", "content", "text")
+    )
+
 
 
 class DraftEmailReplySkill(BaseSkill):

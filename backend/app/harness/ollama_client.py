@@ -8,7 +8,7 @@ import logging
 from typing import Any, Dict, List, Optional
 import httpx
 from app.config import OllamaConfig, get_settings
-from app.schemas import EmailTriageResult
+from app.schemas import CoPilotResponse, EmailTriageResult
 
 logger = logging.getLogger(__name__)
 
@@ -154,4 +154,50 @@ class OllamaClient:
         except Exception as e:
             logger.error(f"Ollama chat completion error: {str(e)}")
             raise OllamaClientError(f"Chat completion failed: {str(e)}") from e
+
+    async def step_copilot(
+        self,
+        messages: List[Dict[str, Any]],
+        temperature: float = 0.1
+    ) -> CoPilotResponse:
+        """
+        Executes a grammar-constrained CoPilot ReAct reasoning step.
+        Uses format: CoPilotResponse.model_json_schema() to guarantee valid
+        thought, action, and final_answer fields across all models (including gemma2:9b).
+        """
+        url = f"{self.base_url}/api/chat"
+        payload = {
+            "model": self.config.model,
+            "messages": messages,
+            "stream": False,
+            "format": CoPilotResponse.model_json_schema(),
+            "options": {
+                "temperature": temperature,
+            }
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, json=payload)
+                
+                if response.status_code == 404:
+                    raise OllamaModelNotFoundError(
+                        f"Model '{self.config.model}' not found in Ollama. Run: ollama pull {self.config.model}"
+                    )
+                
+                response.raise_for_status()
+                data = response.json()
+                raw_content = data.get("message", {}).get("content", "")
+                return CoPilotResponse.model_validate_json(raw_content)
+
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            raise OllamaConnectionError(
+                f"Failed to reach Ollama at {self.base_url}. Is the service running?"
+            ) from e
+        except OllamaClientError:
+            raise
+        except Exception as e:
+            logger.error(f"Ollama CoPilot step error: {str(e)}")
+            raise OllamaClientError(f"CoPilot step failed: {str(e)}") from e
+
 

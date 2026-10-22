@@ -63,3 +63,48 @@ class TaskOut(BaseModel):
 class StatusUpdateRequest(BaseModel):
     status: TaskStatus = Field(description="Target lifecycle state for the task")
 
+
+class ExecutionLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    task_id: int
+    thought: Optional[str] = None
+    tool_name: str
+    tool_input: str
+    tool_output: str
+    created_at: str
+
+
+class TaskDetailOut(BaseModel):
+    task: TaskOut
+    logs: List[ExecutionLogOut] = Field(default_factory=list)
+
+
+class AgentRunRequest(BaseModel):
+    instruction: str = Field(description="User prompt or instruction for the co-pilot")
+
+
+class SyncResult(BaseModel):
+    new_emails: int
+    tasks_created: int
+
+
+class HealthResponse(BaseModel):
+    status: str
+    database: str
+    ollama: dict
+
+
+class ToolCallAction(BaseModel):
+    name: str = Field(description="Name of the tool to invoke")
+    arguments: dict = Field(default_factory=dict, description="Arguments dictionary for the tool")
+
+
+class CoPilotResponse(BaseModel):
+    thought: str = Field(description="Step-by-step reasoning about the task and current state")
+    action: Optional[ToolCallAction] = Field(None, description="Tool action to run, or null if providing final answer")
+    final_answer: Optional[str] = Field(None, description="Final user-facing response when task is completed or no tool is needed")
+
+
+
