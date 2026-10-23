@@ -21,6 +21,9 @@ htmlcov/
 *.db-wal
 *.db-shm
 agent_vault.db*
+data/
+workspace/*
+!workspace/README.md
 
 # Distribution / packaging
 build/

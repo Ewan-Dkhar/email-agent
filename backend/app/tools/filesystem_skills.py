@@ -3,6 +3,7 @@ Filesystem Skills Module.
 Provides secure, sandboxed file reading with path-traversal prevention.
 """
 
+import os
 from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -15,7 +16,9 @@ DEFAULT_SAFE_WORKSPACE = Path.home() / "Documents" / "AgentWorkspace"
 
 def get_safe_workspace(custom_workspace: Optional[Path] = None) -> Path:
     """Returns the resolved safe workspace path, ensuring directory exists."""
-    workspace = (custom_workspace or DEFAULT_SAFE_WORKSPACE).resolve()
+    env_workspace = os.getenv("EMAIL_AGENT_WORKSPACE_PATH")
+    base_default = Path(env_workspace) if env_workspace else DEFAULT_SAFE_WORKSPACE
+    workspace = (custom_workspace or base_default).resolve()
     workspace.mkdir(parents=True, exist_ok=True)
     return workspace
 

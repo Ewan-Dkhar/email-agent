@@ -5,10 +5,14 @@ Default Values -> config.yaml -> Environment Variable Overrides.
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple, Type
 import yaml
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 from functools import lru_cache
 
 
@@ -55,6 +59,23 @@ class AppSettings(BaseSettings):
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     imap: ImapConfig = Field(default_factory=ImapConfig)
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: Type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> Tuple[PydanticBaseSettingsSource, ...]:
+        # Priority order: Environment Variables -> YAML (via init) -> Defaults
+        return (
+            env_settings,
+            init_settings,
+            dotenv_settings,
+            file_secret_settings,
+        )
 
     @classmethod
     def load_from_yaml(cls, yaml_path: Optional[Path] = None) -> "AppSettings":

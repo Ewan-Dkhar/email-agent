@@ -1,0 +1,34 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: email-agent-backend
+    restart: unless-stopped
+    network_mode: "host"
+    environment:
+      - EMAIL_AGENT_SERVER__HOST=127.0.0.1
+      - EMAIL_AGENT_SERVER__PORT=8000
+      - EMAIL_AGENT_OLLAMA__BASE_URL=http://127.0.0.1:11434
+      - EMAIL_AGENT_DATABASE__PATH=/app/data/agent_vault.db
+      - EMAIL_AGENT_WORKSPACE_PATH=/app/workspace
+    volumes:
+      # Mount local runtime configuration (contains IMAP credentials)
+      - ./config.yaml:/app/config.yaml:ro
+      # Persist SQLite database and WAL logs across restarts
+      - agent-vault-data:/app/data
+      # Mount local agent workspace for filesystem inspection tools
+      - ./workspace:/app/workspace
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: email-agent-frontend
+    restart: unless-stopped
+    network_mode: "host"
+    depends_on:
+      - backend
+
+volumes:
+  agent-vault-data:

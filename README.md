@@ -103,9 +103,47 @@ Follow these steps to obtain a Gmail App Password:
 > - **Yahoo Mail**: Server: `imap.mail.yahoo.com`, Port: `993`, SSL: `true`. Generate an App Password under Account Security.
 > - **Fastmail / Custom IMAP**: Use your provider's IMAP SSL hostname and port `993` with an app-specific token.
 
+## 🐳 Quickstart with Docker Compose (Recommended)
+
+Run the complete multi-tier stack (FastAPI Backend + React Nginx SPA) with one command—no need to install Python 3.12 or Node.js on your host:
+
+### 1. Ensure Ollama is Running on Your Host
+Start the Ollama daemon and pull the model:
+```bash
+ollama serve
+ollama pull gemma2:9b
+```
+> [!NOTE]
+> Docker Compose uses host networking by default on Linux, allowing the backend to connect directly to `http://127.0.0.1:11434` without firewall or bridge gateway configuration. Standard `ollama serve` works out-of-the-box.
+
+### 2. Set Up Configuration
+```bash
+cp config.example.yaml config.yaml
+# Edit config.yaml with your IMAP email and App Password
+```
+
+### 3. Launch Stack
+```bash
+docker compose up --build -d
+```
+
+- **Web Dashboard**: Navigate to [`http://localhost:5173`](http://localhost:5173) in your browser.
+- **Backend API Documentation**: OpenAPI Swagger docs are available at [`http://localhost:8000/docs`](http://localhost:8000/docs).
+- **Persistent Workspace**: Place any reference text files, notes, or syllabi into `./workspace/`—the ReAct co-pilot can inspect them via `read_local_file`.
+- **Database Persistence**: Your email index and triage history are preserved in a Docker named volume (`agent-vault-data`).
+
+To view logs or stop the stack:
+```bash
+# View real-time logs
+docker compose logs -f
+
+# Stop all services
+docker compose down
+```
+
 ---
 
-## ⚙️ Local Installation & Setup
+## ⚙️ Manual Local Installation (Without Docker)
 
 ### 1. Clone the Repository
 
