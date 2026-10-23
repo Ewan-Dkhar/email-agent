@@ -26,3 +26,14 @@ imap:
   password: "your_app_password"
   mailbox: "INBOX"
   poll_interval_seconds: 900 # 15 minutes
+
+smtp:
+  host: "smtp.gmail.com"
+  port: 587
+  use_tls: true
+  use_ssl: false
+  # If username/password are empty, they automatically fallback to imap settings above
+  username: ""
+  password: ""
+  from_address: "" # Defaults to username if omitted
+

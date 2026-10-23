@@ -49,9 +49,20 @@ CREATE TABLE IF NOT EXISTS execution_logs (
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS sent_emails (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    draft_id TEXT,
+    recipient TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    body_markdown TEXT NOT NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_priority_status ON tasks(priority_tier, status);
 CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline);
 CREATE INDEX IF NOT EXISTS idx_emails_uid ON processed_emails(imap_uid);
+CREATE INDEX IF NOT EXISTS idx_sent_emails_draft ON sent_emails(draft_id);
 """
 
 

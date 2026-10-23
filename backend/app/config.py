@@ -48,6 +48,25 @@ class ImapConfig(BaseModel):
     poll_interval_seconds: int = 900
 
 
+class SmtpConfig(BaseModel):
+    host: str = "smtp.gmail.com"
+    port: int = 587
+    use_tls: bool = True
+    use_ssl: bool = False
+    username: str = ""
+    password: str = ""
+    from_address: str = ""
+
+    def get_username(self, fallback_imap: str = "") -> str:
+        return self.username or fallback_imap
+
+    def get_password(self, fallback_imap: str = "") -> str:
+        return self.password or fallback_imap
+
+    def get_from_address(self, fallback: str = "") -> str:
+        return self.from_address or self.username or fallback
+
+
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="EMAIL_AGENT_",
@@ -59,6 +78,7 @@ class AppSettings(BaseSettings):
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     imap: ImapConfig = Field(default_factory=ImapConfig)
+    smtp: SmtpConfig = Field(default_factory=SmtpConfig)
 
     @classmethod
     def settings_customise_sources(

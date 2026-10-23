@@ -83,9 +83,14 @@ export async function getDraft(draftId: string): Promise<DraftRecord> {
   return handleResponse<DraftRecord>(res);
 }
 
-export async function approveDraft(draftId: string): Promise<{ status: string; message: string }> {
+export async function approveDraft(
+  draftId: string,
+  draftData?: { recipient: string; subject: string; body_markdown: string }
+): Promise<{ status: string; message: string; sent_at?: string }> {
   const res = await fetch(`${BASE_URL}/drafts/${draftId}/approve`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: draftData ? JSON.stringify(draftData) : undefined,
   });
-  return handleResponse<{ status: string; message: string }>(res);
+  return handleResponse<{ status: string; message: string; sent_at?: string }>(res);
 }

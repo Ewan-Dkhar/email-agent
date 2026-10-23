@@ -177,9 +177,11 @@ async def test_draft_inspection_and_approval_gate():
         assert get_res.json()["status"] == "PENDING_APPROVAL"
 
         # 2. Approve draft (HITL Gate)
-        approve_res = await client.post(f"/api/drafts/{draft_id}/approve")
-        assert approve_res.status_code == 200
-        assert approve_res.json()["status"] == "APPROVED"
+        with patch("app.tools.smtp_client.SmtpClient.send_email") as mock_send:
+            mock_send.return_value = {"success": True}
+            approve_res = await client.post(f"/api/drafts/{draft_id}/approve")
+            assert approve_res.status_code == 200
+            assert approve_res.json()["status"] == "APPROVED"
 
         # 3. Verify status updated in store
         updated = await client.get(f"/api/drafts/{draft_id}")

@@ -108,4 +108,18 @@ class CoPilotResponse(BaseModel):
     final_answer: Optional[str] = Field(None, description="Final user-facing response when task is completed or no tool is needed")
 
 
+class ApproveDraftRequest(BaseModel):
+    recipient: Optional[str] = Field(None, description="Target recipient email address")
+    subject: Optional[str] = Field(None, description="Email subject line")
+    body_markdown: Optional[str] = Field(None, description="Draft content in Markdown/plain text format")
+
+
+class DraftApprovalResponse(BaseModel):
+    draft_id: str
+    status: str
+    message: str
+    sent_at: Optional[str] = None
+
+
+
 

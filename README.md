@@ -194,6 +194,16 @@ cd email-agent
      password: "your_16_character_app_password"
      mailbox: "INBOX"
      poll_interval_seconds: 900
+
+   smtp:
+     host: "smtp.gmail.com"
+     port: 587
+     use_tls: true
+     use_ssl: false
+     # If left blank, username and password automatically reuse imap credentials above
+     username: ""
+     password: ""
+     from_address: ""
    ```
 
 > [!WARNING]
@@ -269,7 +279,7 @@ cd email-agent
 - **Ask questions**: Ask the agent to summarize context, verify details, or explain next steps.
 - **Inspect local files**: The agent can inspect reference documents or notes in your workspace via the `read_local_file` skill.
 - **Draft an email reply**: Ask the agent to *"Draft a polite reply confirming attendance"* or *"Draft an email requesting an extension"*.
-- **Review & Approve Drafts**: Staged email drafts are displayed in a clean preview card. Click **"Approve Draft"** to stage and approve the response.
+- **Review, Approve & Send via SMTP**: Staged email drafts are displayed in a clean preview card. Click **"Approve & Send via SMTP"** to dispatch the email directly through your authenticated mail server. Sent emails are permanently logged in the SQLite audit vault.
 - **Session Persistence**: Close the sidebar anytime by clicking outside or pressing <kbd>Esc</kbd>—your conversation turns and draft previews are automatically preserved when you reopen the task.
 
 ---

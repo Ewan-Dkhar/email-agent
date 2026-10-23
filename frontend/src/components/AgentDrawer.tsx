@@ -57,6 +57,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({ task, onClose, onTaskU
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
   const [stagedDraft, setStagedDraft] = useState<DraftRecord | null>(null);
   const [draftApproved, setDraftApproved] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const isCompleted = task.status === 'COMPLETED';
   const isDismissed = task.status === 'DISMISSED';
@@ -199,8 +200,13 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({ task, onClose, onTaskU
 
   const handleApproveDraft = async () => {
     if (!stagedDraft || !task) return;
+    setSendingEmail(true);
     try {
-      await approveDraft(stagedDraft.draft_id);
+      await approveDraft(stagedDraft.draft_id, {
+        recipient: stagedDraft.recipient,
+        subject: stagedDraft.subject,
+        body_markdown: stagedDraft.body_markdown,
+      });
       setDraftApproved(true);
       saveTaskSession(task.id, {
         turns,
@@ -208,7 +214,9 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({ task, onClose, onTaskU
         draftApproved: true,
       });
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to approve draft');
+      alert(err instanceof Error ? err.message : 'Failed to send email via SMTP');
+    } finally {
+      setSendingEmail(false);
     }
   };
 
@@ -546,7 +554,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({ task, onClose, onTaskU
               </div>
               <button
                 onClick={handleApproveDraft}
-                disabled={draftApproved}
+                disabled={draftApproved || sendingEmail}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -556,13 +564,28 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({ task, onClose, onTaskU
                   fontWeight: '600',
                   borderRadius: '6px',
                   border: 'none',
-                  backgroundColor: draftApproved ? '#10b981' : '#2563eb',
+                  backgroundColor: draftApproved ? '#10b981' : (sendingEmail ? '#9ca3af' : '#2563eb'),
                   color: '#ffffff',
-                  cursor: draftApproved ? 'default' : 'pointer',
+                  cursor: (draftApproved || sendingEmail) ? 'default' : 'pointer',
+                  transition: 'background-color 0.15s ease',
                 }}
               >
-                <CheckCircle size={15} />
-                {draftApproved ? 'Draft Approved!' : 'Approve & Stage for Sending'}
+                {draftApproved ? (
+                  <>
+                    <CheckCircle size={15} />
+                    <span>Email Sent via SMTP!</span>
+                  </>
+                ) : sendingEmail ? (
+                  <>
+                    <Bot size={15} style={{ animation: 'spin 1s linear infinite' }} />
+                    <span>Dispatching via SMTP...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send size={15} />
+                    <span>Approve & Send via SMTP</span>
+                  </>
+                )}
               </button>
             </div>
           )}

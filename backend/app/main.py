@@ -7,6 +7,7 @@ and synchronization.
 from contextlib import asynccontextmanager
 import logging
 from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
@@ -17,6 +18,8 @@ from app.harness.triage_service import TriageService
 from app.ingestion.imap_client import ImapSyncClient
 from app.schemas import (
     AgentRunRequest,
+    ApproveDraftRequest,
+    DraftApprovalResponse,
     ExecutionLogOut,
     HealthResponse,
     PriorityTier,
@@ -27,6 +30,7 @@ from app.schemas import (
     TaskStatus,
 )
 from app.tools.email_skills import DraftEmailReplySkill
+from app.tools.smtp_client import SmtpClient, SmtpConfigurationError, SmtpClientError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -289,19 +293,66 @@ async def get_staged_draft(draft_id: str):
     return draft
 
 
-@app.post("/api/drafts/{draft_id}/approve")
-async def approve_staged_draft(draft_id: str):
+@app.post("/api/drafts/{draft_id}/approve", response_model=DraftApprovalResponse)
+async def approve_staged_draft(draft_id: str, request: Optional[ApproveDraftRequest] = None):
     """
     Human-in-the-Loop approval gate.
-    Marks a staged draft as user-approved.
+    Marks a staged draft as user-approved and dispatches the outbound email via SMTP.
     """
     draft = DraftEmailReplySkill.get_staged_draft(draft_id)
-    if not draft:
-        raise HTTPException(status_code=404, detail=f"Draft '{draft_id}' not found")
 
-    draft["status"] = "APPROVED"
-    return {
-        "draft_id": draft_id,
-        "status": "APPROVED",
-        "message": "Draft successfully approved for sending."
-    }
+    recipient = (request and request.recipient) or (draft and draft.get("recipient"))
+    subject = (request and request.subject) or (draft and draft.get("subject"))
+    body = (request and request.body_markdown) or (draft and draft.get("body_markdown"))
+
+    if not recipient or not subject or not body:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Draft '{draft_id}' details not found. Please provide recipient, subject, and body."
+        )
+
+    # 1. Dispatch over authenticated SMTP
+    smtp_client = SmtpClient()
+    try:
+        await smtp_client.send_email_async(
+            recipient=recipient,
+            subject=subject,
+            body_text=body
+        )
+    except SmtpConfigurationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"SMTP Configuration Error: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to dispatch approved draft '{draft_id}' via SMTP: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"SMTP Dispatch Failed: {str(e)}"
+        )
+
+    # 2. Update in-memory state if present
+    if draft:
+        draft["status"] = "APPROVED"
+
+    # 3. Log sent email to persistent SQLite audit vault
+    sent_at = datetime.now(timezone.utc).isoformat()
+    try:
+        with get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO sent_emails (draft_id, recipient, subject, body_markdown, sent_at, status)
+                VALUES (?, ?, ?, ?, ?, 'SENT')
+                """,
+                (draft_id, recipient, subject, body, sent_at)
+            )
+    except Exception as db_err:
+        logger.warning(f"Could not log sent email audit record: {db_err}")
+
+    return DraftApprovalResponse(
+        draft_id=draft_id,
+        status="APPROVED",
+        message=f"Draft approved and successfully sent to {recipient}.",
+        sent_at=sent_at
+    )
+
